@@ -11,4 +11,7 @@ export {
   saveFeedback,
 } from "./snapshot-store";
 export { buildJiraPayload } from "./jira-payload-builder";
+export { normalizeStoryInput, extractAcceptanceCriteria } from "./normalizer";
+export { recordAnalysis, recordFeedback, recordJiraPreview, getMetricsSummary } from "./telemetry";
+export { isAiRefinementEnabled, refineQuestions, refineSubtasks, generateSummary } from "./ai-refiner";
 export type * from "./types";

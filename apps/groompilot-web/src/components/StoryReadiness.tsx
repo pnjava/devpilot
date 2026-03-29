@@ -115,6 +115,11 @@ export default function StoryReadiness() {
   const [showPayload, setShowPayload] = useState(false);
   const [selectedSubtaskIds, setSelectedSubtaskIds] = useState<Set<string>>(new Set());
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Snapshot[]>([]);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
   const analyze = useCallback(async () => {
     if (!jiraKey.trim()) return;
@@ -189,6 +194,75 @@ export default function StoryReadiness() {
       setError(err.message || "Failed to prepare Jira payload");
     }
   }, [snapshot, selectedSubtaskIds]);
+
+  const loadHistory = useCallback(async () => {
+    if (!snapshot) return;
+    try {
+      const result = await api.getStoryReadinessHistory(snapshot.jiraKey, 10);
+      setHistory(result.snapshots || []);
+      setShowHistory(true);
+    } catch (err: any) {
+      setError(err.message || "Failed to load history");
+    }
+  }, [snapshot]);
+
+  const submitFeedback = useCallback(async () => {
+    if (!snapshot) return;
+    try {
+      await api.submitReadinessFeedback(snapshot.jiraKey, {
+        snapshotId: snapshot.snapshotId,
+        feedbackType: "general",
+        feedbackText,
+        acceptedQuestionIds: snapshot.clarificationQuestions
+          .filter((q) => expandedQuestions.has(q.id))
+          .map((q) => q.id),
+        acceptedSubtaskIds: Array.from(selectedSubtaskIds),
+      });
+      setFeedbackSent(true);
+      setFeedbackText("");
+      setTimeout(() => setFeedbackSent(false), 3000);
+    } catch (err: any) {
+      setError(err.message || "Failed to submit feedback");
+    }
+  }, [snapshot, feedbackText, expandedQuestions, selectedSubtaskIds]);
+
+  const copyToClipboard = useCallback((text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopyMsg(`${label} copied!`);
+      setTimeout(() => setCopyMsg(null), 2000);
+    });
+  }, []);
+
+  const exportSummary = useCallback(() => {
+    if (!snapshot) return;
+    const lines = [
+      `# Story Readiness: ${snapshot.jiraKey}`,
+      `**${snapshot.title}**`,
+      ``,
+      `**Score:** ${snapshot.readinessScoreOverall}/100 — ${snapshot.readinessState.replace(/_/g, " ")}`,
+      `**Type:** ${snapshot.storyType.replace(/_/g, " ")}`,
+      `**Knowledge Confidence:** ${snapshot.knowledgeConfidence}`,
+      ``,
+      `## Dimensions`,
+      ...snapshot.readinessDimensions.map((d) => `- ${d.name}: ${d.score}/100 (${d.confidence})`),
+      ``,
+    ];
+    if (snapshot.blockingGaps.length > 0) {
+      lines.push(`## Blocking Gaps`);
+      lines.push(...snapshot.blockingGaps.map((g) => `- [${g.severity}] ${g.description}`));
+      lines.push(``);
+    }
+    if (snapshot.clarificationQuestions.length > 0) {
+      lines.push(`## Clarification Questions`);
+      lines.push(...snapshot.clarificationQuestions.map((q) => `- [${q.severity}] [${q.category}] ${q.questionText}`));
+      lines.push(``);
+    }
+    if (snapshot.suggestedSubtasks.length > 0) {
+      lines.push(`## Suggested Subtasks`);
+      lines.push(...snapshot.suggestedSubtasks.map((s) => `- ${s.isDraft ? "(draft) " : ""}${s.title} [${s.category}]`));
+    }
+    copyToClipboard(lines.join("\n"), "Summary");
+  }, [snapshot, copyToClipboard]);
 
   const toggleSubtask = (id: string) => {
     setSelectedSubtaskIds((prev) => {
@@ -400,14 +474,96 @@ export default function StoryReadiness() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={prepareJira}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium text-white transition-colors"
             >
               Preview Jira Update ({selectedSubtaskIds.size} subtasks)
             </button>
+            <button
+              onClick={() =>
+                copyToClipboard(
+                  snapshot.clarificationQuestions.map((q) => `[${q.severity}] ${q.questionText}`).join("\n"),
+                  "Questions",
+                )
+              }
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
+            >
+              Copy Questions
+            </button>
+            <button
+              onClick={() =>
+                copyToClipboard(
+                  snapshot.suggestedSubtasks
+                    .filter((s) => selectedSubtaskIds.has(s.id))
+                    .map((s) => `${s.title} — ${s.description}`)
+                    .join("\n"),
+                  "Subtasks",
+                )
+              }
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
+            >
+              Copy Subtasks
+            </button>
+            <button
+              onClick={exportSummary}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
+            >
+              Export Summary
+            </button>
+            <button
+              onClick={loadHistory}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
+            >
+              View History
+            </button>
+            {copyMsg && <span className="text-xs text-green-400">{copyMsg}</span>}
           </div>
+
+          {/* Feedback Panel */}
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-5">
+            <h3 className="text-sm font-semibold text-gray-300 mb-3">Feedback</h3>
+            <p className="text-xs text-gray-500 mb-2">
+              Help improve future suggestions. Selected subtasks and expanded questions are recorded as accepted.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder="Optional: notes on what was helpful or missing..."
+                className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                onClick={submitFeedback}
+                disabled={feedbackSent}
+                className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 rounded text-sm font-medium text-white transition-colors"
+              >
+                {feedbackSent ? "Sent ✓" : "Submit"}
+              </button>
+            </div>
+          </div>
+
+          {/* History Panel */}
+          {showHistory && history.length > 0 && (
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-300">Analysis History ({history.length})</h3>
+                <button onClick={() => setShowHistory(false)} className="text-xs text-gray-500 hover:text-gray-300">Close</button>
+              </div>
+              <div className="space-y-2">
+                {history.map((h) => (
+                  <div key={h.snapshotId} className="flex items-center gap-3 p-2 bg-gray-900 rounded text-xs">
+                    <span className="font-mono text-gray-400">v{h.version}</span>
+                    <span className={`font-medium ${stateColor(h.readinessState)}`}>{h.readinessScoreOverall}</span>
+                    <span className="text-gray-500">{stateLabel(h.readinessState)}</span>
+                    <span className="text-gray-600 ml-auto">{new Date(h.generatedAt).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Jira Payload Preview */}
           {showPayload && jiraPayload && (

@@ -13,6 +13,9 @@ import { generateQuestions } from "./question-generator";
 import { generateSubtasks } from "./subtask-generator";
 import { saveSnapshot, getLatestSnapshot } from "./snapshot-store";
 import { getKnowledgeContextForJira } from "../knowledge-warehouse";
+import { normalizeStoryInput } from "./normalizer";
+import { recordAnalysis } from "./telemetry";
+import { isAiRefinementEnabled, refineQuestions, refineSubtasks } from "./ai-refiner";
 
 // ── Public API ─────────────────────────────────────────────
 
@@ -33,14 +36,43 @@ export interface AnalyzeResult {
  * 7. Persist (if runMode != 'analyze_only')
  */
 export async function analyzeStory(req: StoryReadinessRequest): Promise<AnalyzeResult> {
+  // ── Step 0: Normalize sparse input ───────────────────────
+  const { normalized, acExtractedFromDescription } = normalizeStoryInput({
+    jiraKey: req.jiraKey,
+    title: req.title,
+    description: req.description,
+    acceptanceCriteria: req.acceptanceCriteria,
+    epicKey: req.epicKey,
+    issueType: req.issueType,
+    labels: req.labels,
+    assignee: req.assignee,
+    reporter: req.reporter,
+    status: req.status,
+    componentTags: req.componentTags,
+    storyLinks: req.storyLinks,
+    linkedConfluenceUrls: req.linkedConfluenceUrls,
+    manualContextText: req.manualContextText,
+  });
+
+  const normalizedReq: StoryReadinessRequest = {
+    ...req,
+    title: normalized.title,
+    description: normalized.description,
+    acceptanceCriteria: normalized.acceptanceCriteria,
+    labels: normalized.labels,
+    componentTags: normalized.componentTags,
+    storyLinks: normalized.storyLinks,
+    linkedConfluenceUrls: normalized.linkedConfluenceUrls,
+  };
+
   // ── Step 1: Retrieve knowledge context ───────────────────
   let knowledgeContextUsed = false;
-  let enrichedDescription = req.description;
+  let enrichedDescription = normalizedReq.description;
 
   try {
-    const ctx = getKnowledgeContextForJira(req.jiraKey);
+    const ctx = getKnowledgeContextForJira(normalizedReq.jiraKey);
     if (ctx.contextText) {
-      enrichedDescription = [req.description, "\n--- Knowledge Context ---\n", ctx.contextText].join("\n");
+      enrichedDescription = [normalizedReq.description, "\n--- Knowledge Context ---\n", ctx.contextText].join("\n");
       knowledgeContextUsed = true;
     }
   } catch {
@@ -49,37 +81,44 @@ export async function analyzeStory(req: StoryReadinessRequest): Promise<AnalyzeR
 
   // Build enriched request with knowledge context
   const enrichedReq: StoryReadinessRequest = {
-    ...req,
+    ...normalizedReq,
     description: enrichedDescription,
   };
 
   // ── Step 2: Classify story type ──────────────────────────
   const classification = classifyStory({
-    title: req.title,
+    title: normalizedReq.title,
     description: enrichedReq.description,
-    acceptanceCriteria: req.acceptanceCriteria,
-    labels: req.labels,
-    componentTags: req.componentTags,
-    issueType: req.issueType,
+    acceptanceCriteria: normalizedReq.acceptanceCriteria,
+    labels: normalizedReq.labels,
+    componentTags: normalizedReq.componentTags,
+    issueType: normalizedReq.issueType,
   });
 
   // ── Step 3: Score readiness dimensions ───────────────────
   const scoring = scoreReadiness(enrichedReq, classification.storyType);
 
   // ── Step 4: Generate clarification questions ─────────────
-  const questions = generateQuestions(enrichedReq, classification.storyType, scoring.dimensions);
+  let questions = generateQuestions(enrichedReq, classification.storyType, scoring.dimensions);
 
   // ── Step 5: Generate subtask suggestions ─────────────────
-  const subtasks = generateSubtasks(enrichedReq, classification.storyType, scoring.dimensions);
+  let subtasks = generateSubtasks(enrichedReq, classification.storyType, scoring.dimensions);
+
+  // ── Step 5b: Optional AI refinement (feature-flagged) ────
+  if (isAiRefinementEnabled()) {
+    const aiCtx = { title: normalizedReq.title, description: normalizedReq.description, storyType: classification.storyType };
+    questions = await refineQuestions(questions, aiCtx);
+    subtasks = await refineSubtasks(subtasks, aiCtx);
+  }
 
   // ── Step 6: Build snapshot ───────────────────────────────
-  const previousSnapshot = getLatestSnapshot(req.jiraKey);
+  const previousSnapshot = getLatestSnapshot(normalizedReq.jiraKey);
   const version = previousSnapshot ? previousSnapshot.version + 1 : 1;
 
   const snapshot: StoryReadinessSnapshot = {
     snapshotId: crypto.randomUUID(),
-    jiraKey: req.jiraKey,
-    title: req.title,
+    jiraKey: normalizedReq.jiraKey,
+    title: normalizedReq.title,
     storyType: classification.storyType,
     readinessState: scoring.readinessState,
     readinessScoreOverall: scoring.overallScore,
@@ -100,9 +139,16 @@ export async function analyzeStory(req: StoryReadinessRequest): Promise<AnalyzeR
 
   // ── Step 7: Persist ──────────────────────────────────────
   let persisted = false;
-  if (req.runMode !== "analyze_only") {
+  if (normalizedReq.runMode !== "analyze_only") {
     saveSnapshot(snapshot);
     persisted = true;
+  }
+
+  // ── Step 8: Record telemetry ─────────────────────────────
+  try {
+    recordAnalysis(snapshot);
+  } catch {
+    // Telemetry must not break analysis
   }
 
   return { snapshot, persisted, knowledgeContextUsed };

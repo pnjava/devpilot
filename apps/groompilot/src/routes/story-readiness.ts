@@ -9,6 +9,9 @@ import {
   getSnapshotHistory,
   saveFeedback,
   buildJiraPayload,
+  getMetricsSummary,
+  recordFeedback,
+  recordJiraPreview,
 } from "../services/story-readiness";
 import type { StoryReadinessRequest, RunMode, TriggerSource } from "../services/story-readiness";
 
@@ -103,6 +106,20 @@ router.post("/refresh/:jiraKey", async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ── GET /api/story-readiness/metrics ────────────────────────
+// Aggregate telemetry for readiness feature usage
+// NOTE: Must be defined BEFORE /:jiraKey to avoid route conflict
+router.get("/metrics", (_req: AuthRequest, res: Response) => {
+  try {
+    const days = parseInt(_req.query.days as string) || 30;
+    const summary = getMetricsSummary(Math.min(days, 365));
+    res.json(summary);
+  } catch (err) {
+    console.error("story-readiness metrics error:", err);
+    res.status(500).json({ error: "Failed to retrieve metrics" });
+  }
+});
+
 // ── GET /api/story-readiness/:jiraKey ──────────────────────
 // Get the latest readiness snapshot for a story
 router.get("/:jiraKey", (_req: AuthRequest, res: Response) => {
@@ -161,6 +178,8 @@ router.post("/:jiraKey/prepare-jira-update", (_req: AuthRequest, res: Response) 
       dryRun: true, // always dry-run in phase 1
     });
 
+    try { recordJiraPreview(jiraKey); } catch { /* telemetry must not break request */ }
+
     res.json(payload);
   } catch (err) {
     console.error("story-readiness prepare-jira error:", err);
@@ -195,6 +214,14 @@ router.post("/:jiraKey/feedback", (req: AuthRequest, res: Response) => {
       acceptedSubtaskIds: acceptedSubtaskIds || [],
       createdBy: (req as any).user?.username || "anonymous",
     });
+
+    try {
+      recordFeedback(
+        jiraKey,
+        (acceptedSubtaskIds || []).length,
+        0, // rejected count not tracked in this call shape
+      );
+    } catch { /* telemetry must not break request */ }
 
     res.status(201).json({ id, jiraKey, snapshotId });
   } catch (err) {
