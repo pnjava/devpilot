@@ -1,0 +1,46 @@
+{
+  "name": "@devpilot/groompilot",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "NODE_OPTIONS=--use-system-ca tsx watch src/index.ts",
+    "dev:ai-only": "REVIEW_MODE=ai_only NODE_OPTIONS=--use-system-ca tsx watch src/index.ts",
+    "dev:hybrid": "REVIEW_MODE=hybrid_balanced NODE_OPTIONS=--use-system-ca tsx watch src/index.ts",
+    "dev:strict": "REVIEW_MODE=hybrid_strict NODE_OPTIONS=--use-system-ca tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "tsx --test test/**/*.test.ts",
+    "replay": "tsx src/scripts/review-replay-harness.ts",
+    "confluence-ingest": "tsx src/scripts/confluence-ingest.ts",
+    "knowledge-load-pack": "tsx src/scripts/knowledge-load-pack.ts",
+    "batch-review": "NODE_OPTIONS=--use-system-ca tsx src/scripts/batch-pr-review.ts",
+    "start": "NODE_OPTIONS=--use-system-ca node dist/index.js"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.1.1",
+    "@devpilot/shared": "*",
+    "@devpilot/db": "*",
+    "@devpilot/jira": "*",
+    "ajv": "^8.17.1",
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "neo4j-driver": "^6.0.1",
+    "nodemailer": "^6.10.1",
+    "socket.io": "^4.8.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/nodemailer": "^6.4.17",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "devpilot",
+  "private": true,
+  "description": "AI-powered grooming, PR review, delivery intelligence & traceability platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:analytics": "turbo run dev --filter=@devpilot/api --filter=@devpilot/web",
+    "dev:groompilot": "turbo run dev --filter=@devpilot/groompilot --filter=@devpilot/groompilot-web",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "db:migrate": "npm run -w @devpilot/db migrate:dev",
+    "db:seed": "npm run -w @devpilot/db seed",
+    "db:reset": "npm run -w @devpilot/db reset",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.16",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.15.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,1 @@
+{"version":3,"file":"insights.service.d.ts","sourceRoot":"","sources":["../../src/metrics/insights.service.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,WAAW,EAAE,YAAY,EAAE,gBAAgB,EAAe,MAAM,kBAAkB,CAAC;AAiEjG,qBACa,eAAe;IAC1B,oBAAoB,CAAC,OAAO,EAAE,WAAW,GAAG,gBAAgB,EAAE;IA2B9D,oBAAoB,CAAC,OAAO,EAAE,YAAY,GAAG,gBAAgB,EAAE;CAyDhE"}

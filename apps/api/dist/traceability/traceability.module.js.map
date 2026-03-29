@@ -1,0 +1,1 @@
+{"version":3,"file":"traceability.module.js","sourceRoot":"","sources":["../../src/traceability/traceability.module.ts"],"names":[],"mappings":";;;;;;;;;AAAA,2CAAwC;AACxC,uDAAmD;AAM5C,IAAM,kBAAkB,GAAxB,MAAM,kBAAkB;CAAG,CAAA;AAArB,gDAAkB;6BAAlB,kBAAkB;IAJ9B,IAAA,eAAM,EAAC;QACN,SAAS,EAAE,CAAC,gCAAc,CAAC;QAC3B,OAAO,EAAE,CAAC,gCAAc,CAAC;KAC1B,CAAC;GACW,kBAAkB,CAAG"}
